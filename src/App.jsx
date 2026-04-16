@@ -1,6 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { 
+  getAuth, 
+  GoogleAuthProvider, 
+  signInWithPopup, 
+  signOut, 
+  onAuthStateChanged,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword
+} from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, onSnapshot, deleteDoc } from 'firebase/firestore';
 
 // --- ICONS ---
@@ -12,6 +20,7 @@ const IconSettings = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" 
 const IconEye = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>;
 const IconChevronLeft = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m15 18-6-6 6-6"/></svg>;
 const IconTrash = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>;
+const IconGoogle = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>;
 
 // 🔥 JOUW UNIEKE FIREBASE CONFIG 🔥
 const firebaseConfig = {
@@ -26,6 +35,7 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+const googleProvider = new GoogleAuthProvider();
 const db = getFirestore(app);
 
 // --- DATA STRUCTURES ---
@@ -55,7 +65,16 @@ const initialBonus = {
 };
 
 export default function App() {
+  // Gebruiker & Auth state
   const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  
+  // Email/Wachtwoord Auth state
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [authError, setAuthError] = useState('');
+
   const [userName, setUserName] = useState('');
   const [activeTab, setActiveTab] = useState('bracket');
   const [viewingUser, setViewingUser] = useState(null);
@@ -78,17 +97,9 @@ export default function App() {
   const [bracketToDelete, setBracketToDelete] = useState(null);
 
   useEffect(() => {
-    const initAuth = async () => {
-      try {
-        await signInAnonymously(auth);
-      } catch (err) {
-        console.error("Auth error:", err);
-      }
-    };
-    initAuth();
-
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
+      setAuthLoading(false);
     });
     return () => unsubscribe();
   }, []);
@@ -120,14 +131,22 @@ export default function App() {
 
     const usersUnsub = onSnapshot(collection(db, 'brackets'), (snapshot) => {
       const usersData = [];
+      let foundCurrentUser = false;
+
       snapshot.forEach(doc => {
         usersData.push({ id: doc.id, ...doc.data() });
         if (doc.id === user.uid) {
-          setUserName(doc.data().name || '');
+          foundCurrentUser = true;
+          setUserName(doc.data().name || user.displayName || '');
           if (doc.data().picks) setMyPicks(doc.data().picks);
           if (doc.data().bonus) setMyBonus(doc.data().bonus);
         }
       });
+
+      if (!foundCurrentUser && user.displayName) {
+          setUserName(user.displayName);
+      }
+
       setAllUsers(usersData);
     });
 
@@ -138,6 +157,47 @@ export default function App() {
     };
   }, [user]);
 
+  // --- AUTHENTICATIE FUNCTIES ---
+  const handleGoogleLogin = async () => {
+    setAuthError('');
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (error) {
+      console.error("Login Error:", error);
+      if (error.code !== 'auth/popup-closed-by-user') {
+         setAuthError("Inloggen mislukt. Controleer of pop-ups zijn toegestaan.");
+      }
+    }
+  };
+
+  const handleEmailAuth = async (e) => {
+    e.preventDefault();
+    setAuthError('');
+    try {
+      if (isRegistering) {
+        await createUserWithEmailAndPassword(auth, authEmail, authPassword);
+      } else {
+        await signInWithEmailAndPassword(auth, authEmail, authPassword);
+      }
+    } catch (error) {
+      console.error("Auth Error:", error);
+      if (error.code === 'auth/email-already-in-use') setAuthError('Dit e-mailadres is al in gebruik.');
+      else if (error.code === 'auth/invalid-email') setAuthError('Ongeldig e-mailadres.');
+      else if (error.code === 'auth/weak-password') setAuthError('Wachtwoord moet minimaal 6 tekens zijn.');
+      else if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') setAuthError('Verkeerd e-mailadres of wachtwoord.');
+      else setAuthError('Er is een fout opgetreden. Probeer het opnieuw.');
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error("Logout Error:", error);
+    }
+  };
+
+  // --- BRACKET FUNCTIES ---
   const handlePick = (matchId, winnerStr, wins1, wins2, isRealResult = false) => {
     const currentPicks = isRealResult ? { ...realResults.picks } : { ...myPicks };
     currentPicks[matchId] = {
@@ -160,7 +220,7 @@ export default function App() {
     if (!user || appSettings.isLocked) return;
     try {
       await setDoc(doc(db, 'brackets', user.uid), {
-        name: name,
+        name: name || user.displayName || 'Anonieme Speler',
         picks: picks,
         bonus: bonus,
         updatedAt: new Date().toISOString()
@@ -456,7 +516,52 @@ export default function App() {
     );
   };
 
-  if (!user) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-orange-500 font-bold animate-pulse">Laden van court...</div>;
+  if (authLoading) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-orange-500 font-bold animate-pulse">Laden van court...</div>;
+
+  // --- LOGIN SCHERM ---
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4">
+        <div className="max-w-md w-full bg-gray-900 border border-gray-800 rounded-2xl p-8 text-center shadow-2xl">
+          <div className="w-16 h-16 bg-orange-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg shadow-orange-600/30">
+            <IconTrophy className="w-8 h-8 text-white" />
+          </div>
+          <h1 className="text-3xl font-black text-white mb-2 uppercase italic tracking-tight">TJ Bracket <span className="text-orange-500">2026</span></h1>
+          <p className="text-gray-400 mb-6 text-sm">Log in om je voorspellingen op te slaan en op elk apparaat te kunnen bekijken.</p>
+          
+          <form onSubmit={handleEmailAuth} className="space-y-4 mb-6">
+            <input type="email" value={authEmail} onChange={e=>setAuthEmail(e.target.value)} placeholder="E-mailadres" required className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white outline-none focus:border-orange-500 transition-colors" />
+            <input type="password" value={authPassword} onChange={e=>setAuthPassword(e.target.value)} placeholder="Wachtwoord" required className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white outline-none focus:border-orange-500 transition-colors" />
+            {authError && <p className="text-red-500 text-xs text-left font-semibold">{authError}</p>}
+            <button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-3 rounded-lg transition-colors shadow-lg">
+              {isRegistering ? 'Account Aanmaken' : 'Inloggen met E-mail'}
+            </button>
+          </form>
+
+          <div className="text-sm text-gray-400 mb-6">
+            {isRegistering ? 'Al een account? ' : 'Nog geen account? '}
+            <button onClick={() => {setIsRegistering(!isRegistering); setAuthError('');}} className="text-orange-500 hover:underline font-bold">
+              {isRegistering ? 'Log hier in' : 'Registreer hier'}
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between mb-6">
+            <hr className="w-full border-gray-800" />
+            <span className="px-3 text-gray-600 text-xs font-bold uppercase">OF</span>
+            <hr className="w-full border-gray-800" />
+          </div>
+
+          <button 
+            onClick={handleGoogleLogin}
+            className="w-full flex items-center justify-center bg-white hover:bg-gray-100 text-gray-900 font-bold py-3 px-4 rounded-xl transition-all shadow-md"
+          >
+            <IconGoogle className="w-5 h-5 mr-3" />
+            Verder met Google
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const standings = allUsers.map(u => ({ ...u, score: calculatePoints(u) })).sort((a, b) => b.score - a.score);
 
@@ -483,10 +588,13 @@ export default function App() {
             <div className="w-10 h-10 bg-orange-600 rounded-full flex items-center justify-center shadow-lg shadow-orange-600/20"><IconTrophy className="w-6 h-6 text-white" /></div>
             <h1 className="text-2xl font-black tracking-tight text-white uppercase italic">Autistische Bracket <span className="text-orange-500">TJ 2026</span></h1>
           </div>
-          <div className="flex space-x-1 bg-gray-800 p-1 rounded-lg">
-            <button onClick={() => { setActiveTab('bracket'); setViewingUser(null); }} className={`px-4 py-2 rounded-md text-sm font-semibold transition-all flex items-center ${activeTab === 'bracket' ? 'bg-orange-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}><IconEdit className="w-4 h-4 mr-2" /> Mijn Bracket</button>
-            <button onClick={() => { setActiveTab('standings'); setViewingUser(null); }} className={`px-4 py-2 rounded-md text-sm font-semibold transition-all flex items-center ${activeTab === 'standings' ? 'bg-orange-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}><IconUsers className="w-4 h-4 mr-2" /> Standings</button>
-            <button onClick={() => { setActiveTab('admin'); setViewingUser(null); }} className={`px-4 py-2 rounded-md text-sm font-semibold transition-all flex items-center ${activeTab === 'admin' ? 'bg-gray-700 text-white shadow' : 'text-gray-500 hover:text-white'}`}><IconSettings className="w-4 h-4 mr-2" /> Admin</button>
+          <div className="flex flex-col sm:flex-row items-center space-y-3 sm:space-y-0 sm:space-x-4">
+            <div className="flex space-x-1 bg-gray-800 p-1 rounded-lg">
+              <button onClick={() => { setActiveTab('bracket'); setViewingUser(null); }} className={`px-4 py-2 rounded-md text-sm font-semibold transition-all flex items-center ${activeTab === 'bracket' ? 'bg-orange-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}><IconEdit className="w-4 h-4 mr-2" /> Mijn Bracket</button>
+              <button onClick={() => { setActiveTab('standings'); setViewingUser(null); }} className={`px-4 py-2 rounded-md text-sm font-semibold transition-all flex items-center ${activeTab === 'standings' ? 'bg-orange-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}><IconUsers className="w-4 h-4 mr-2" /> Standings</button>
+              <button onClick={() => { setActiveTab('admin'); setViewingUser(null); }} className={`px-4 py-2 rounded-md text-sm font-semibold transition-all flex items-center ${activeTab === 'admin' ? 'bg-gray-700 text-white shadow' : 'text-gray-500 hover:text-white'}`}><IconSettings className="w-4 h-4 mr-2" /> Admin</button>
+            </div>
+            <button onClick={handleLogout} className="text-sm text-gray-500 hover:text-red-400 font-semibold transition-colors">Uitloggen</button>
           </div>
         </div>
       </header>
@@ -496,8 +604,11 @@ export default function App() {
           <div className="pb-12">
             <div className="bg-gray-900 rounded-xl p-6 mb-8 border border-gray-800 shadow-xl flex flex-col sm:flex-row items-center justify-between">
               <div>
-                <h2 className="text-lg font-bold mb-1">Jouw gegevens</h2>
-                <p className="text-sm text-gray-400">Vul je naam in zodat je vrienden weten wie je bent.</p>
+                <h2 className="text-lg font-bold mb-1 flex items-center">
+                  <img src={user.photoURL || `https://ui-avatars.com/api/?name=${userName || 'A'}&background=random`} alt="Profile" className="w-8 h-8 rounded-full mr-3 border border-gray-700" />
+                  Jouw gegevens
+                </h2>
+                <p className="text-sm text-gray-400 ml-11">Vul je naam in zodat je vrienden weten wie je bent.</p>
               </div>
               <div className="mt-4 sm:mt-0 w-full sm:w-auto">
                 <input type="text" value={userName} onChange={(e) => { setUserName(e.target.value); saveMyBracket(e.target.value, myPicks, myBonus); }} placeholder="Jouw Voornaam" className="w-full sm:w-64 bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-all outline-none" />
