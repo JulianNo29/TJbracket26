@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, doc, setDoc, onSnapshot } from 'firebase/firestore';
+import { getFirestore, collection, doc, setDoc, onSnapshot, deleteDoc } from 'firebase/firestore';
 
 // --- ICONS ---
 const IconTrophy = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>;
@@ -11,8 +11,9 @@ const IconUsers = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" vie
 const IconSettings = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>;
 const IconEye = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>;
 const IconChevronLeft = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m15 18-6-6 6-6"/></svg>;
+const IconTrash = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>;
 
-// 🔥 JOUW UNIEKE FIREBASE CONFIG (Automatisch ingevuld) 🔥
+// 🔥 JOUW UNIEKE FIREBASE CONFIG 🔥
 const firebaseConfig = {
   apiKey: "AIzaSyD4w4VeXtG5bheWjLTFkYBPXRNAyvWsnlc",
   authDomain: "tj-bracket-2026.firebaseapp.com",
@@ -57,7 +58,7 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [userName, setUserName] = useState('');
   const [activeTab, setActiveTab] = useState('bracket');
-  const [viewingUser, setViewingUser] = useState(null); // State voor het bekijken van andermans bracket
+  const [viewingUser, setViewingUser] = useState(null);
   
   const [isAdminAuthed, setIsAdminAuthed] = useState(false);
   const [adminPinInput, setAdminPinInput] = useState('');
@@ -74,6 +75,7 @@ export default function App() {
   const [adminTeams, setAdminTeams] = useState(initialMatchups);
   const [adminMessage, setAdminMessage] = useState('');
   const [submitStatus, setSubmitStatus] = useState('');
+  const [bracketToDelete, setBracketToDelete] = useState(null);
 
   useEffect(() => {
     const initAuth = async () => {
@@ -220,9 +222,24 @@ export default function App() {
     }
   };
 
+  const confirmDeleteBracket = async () => {
+    if (!bracketToDelete) return;
+    try {
+      await deleteDoc(doc(db, 'brackets', bracketToDelete.id));
+      
+      const newManualPoints = { ...realResults.manualPoints };
+      delete newManualPoints[bracketToDelete.id];
+      await saveRealResults(realResults.picks, realResults.bonus, newManualPoints);
+      
+      setBracketToDelete(null);
+    } catch (e) {
+      console.error("Delete error:", e);
+    }
+  };
+
   const getDisplayTeams = (matchups, picksObj) => {
     let display = JSON.parse(JSON.stringify(matchups)); 
-    const rounds = [[ 'e1','e2','e3','e4','w1','w2','w3','w4' ], [ 'e5','e6','w5','w6' ], [ 'e7','w7' ], [ 'f1' ]];
+    const rounds = [[ 'e1','e2','e3','e4','w1','w2','w3','w4' ], [ 'e5','e6','w5','w6' ], [ 'e7','w7' ], [ 'f1' ], []];
     
     for (let round of rounds) {
       for (let matchId of round) {
@@ -444,7 +461,22 @@ export default function App() {
   const standings = allUsers.map(u => ({ ...u, score: calculatePoints(u) })).sort((a, b) => b.score - a.score);
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100 font-sans selection:bg-orange-500 selection:text-white">
+    <div className="min-h-screen bg-gray-950 text-gray-100 font-sans selection:bg-orange-500 selection:text-white relative">
+      
+      {/* --- DELETE CONFIRMATION MODAL --- */}
+      {bracketToDelete && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 border border-red-500 rounded-xl p-6 max-w-sm w-full shadow-2xl animate-fadeIn">
+            <h3 className="text-xl font-bold text-white mb-2 flex items-center"><IconTrash className="w-5 h-5 mr-2 text-red-500" /> Bracket Verwijderen</h3>
+            <p className="text-gray-400 mb-6 text-sm">Weet je zeker dat je de bracket van <span className="text-red-400 font-bold">{bracketToDelete.name || 'Anonieme Speler'}</span> wilt wissen? Dit kan niet ongedaan worden gemaakt.</p>
+            <div className="flex space-x-3">
+              <button onClick={() => setBracketToDelete(null)} className="flex-1 px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg font-bold transition-colors border border-gray-700">Annuleren</button>
+              <button onClick={confirmDeleteBracket} className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold transition-colors shadow-lg shadow-red-600/20">Ja, Wis Bracket</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <header className="bg-gray-900 border-b border-gray-800 sticky top-0 z-10 shadow-lg">
         <div className="max-w-6xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-center">
           <div className="flex items-center space-x-3 mb-4 sm:mb-0">
@@ -506,12 +538,8 @@ export default function App() {
           <div className="max-w-5xl mx-auto animate-fadeIn space-y-12">
             
             {viewingUser ? (
-              // DETAILS SCHERM: ANDERMANS BRACKET BEKIJKEN
               <div className="space-y-6">
-                <button 
-                  onClick={() => setViewingUser(null)} 
-                  className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg flex items-center transition-colors border border-gray-700"
-                >
+                <button onClick={() => setViewingUser(null)} className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg flex items-center transition-colors border border-gray-700">
                   <IconChevronLeft className="w-5 h-5 mr-2" /> Terug naar klassement
                 </button>
                 
@@ -525,11 +553,9 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Render de Read-Only weergave van de geselecteerde speler */}
                 {renderBracketView(viewingUser.picks || {}, viewingUser.bonus || {}, false, true)}
               </div>
             ) : (
-              // STANDAARD SCHERM: LEADERBOARD & MASTER BRACKET
               <>
                 <div className="bg-gray-900 rounded-xl overflow-hidden border border-gray-800 shadow-2xl max-w-3xl mx-auto">
                   <div className="bg-gradient-to-r from-orange-600 to-orange-800 px-6 py-4 flex justify-between items-center">
@@ -545,16 +571,23 @@ export default function App() {
                           <div className="text-xs text-gray-500">{Object.keys(u.picks || {}).length} picks ingevuld</div>
                         </div>
                         <div className="text-3xl font-black text-orange-500">{u.score} <span className="text-sm font-normal text-gray-500">ptn</span></div>
-                        <button 
-                          onClick={() => setViewingUser(u)} 
-                          className="ml-4 p-2 bg-gray-800 hover:bg-gray-700 rounded-md text-gray-400 hover:text-white transition-colors"
-                          title="Bekijk Bracket"
-                        >
+                        <button onClick={() => setViewingUser(u)} className="ml-4 p-2 bg-gray-800 hover:bg-gray-700 rounded-md text-gray-400 hover:text-white transition-colors" title="Bekijk Bracket">
                           <IconEye className="w-5 h-5" />
                         </button>
                       </div>
                     ))}
                   </div>
+                </div>
+
+                <div className="mt-8 bg-gray-900 p-6 rounded-xl border border-gray-800 max-w-3xl mx-auto">
+                   <h3 className="font-bold text-gray-300 mb-2">Hoe worden punten berekend?</h3>
+                   <ul className="text-sm text-gray-500 space-y-2 list-disc pl-4">
+                     <li>Winnaar van de serie goed: <span className="text-green-400 font-bold">2 ptn</span></li>
+                     <li>Stand van de serie goed: <span className="text-green-400 font-bold">+2 ptn extra</span> (vereist dat je de winnaar goed hebt)</li>
+                     <li>Sweep correct voorspeld: <span className="text-green-400 font-bold">+2 ptn extra</span> (Totaal dus 6 ptn)</li>
+                     <li>Bonusvragen (MVP, DPY etc.): <span className="text-green-400 font-bold">2 ptn</span> per stuk (indien dit overeenkomt met de officiële uitslag)</li>
+                     <li className="text-purple-400 italic">*Complexe regels (zoals Cinderella Story, All-NBA teams, Meeste punten in 1 game) worden via de "Handmatige Extra Punten" door de Admin toegevoegd!</li>
+                   </ul>
                 </div>
 
                 {appSettings.isLocked && (
@@ -622,8 +655,8 @@ export default function App() {
                 </div>
 
                 <div className="bg-purple-900/20 border border-purple-800 rounded-xl p-6">
-                  <h2 className="text-xl font-bold text-purple-400 mb-2 flex items-center"><IconTrophy className="w-5 h-5 mr-2" /> Handmatige Extra Punten</h2>
-                  <p className="text-sm text-gray-400 mb-6">Voeg hier extra punten toe voor de complexe regels.</p>
+                  <h2 className="text-xl font-bold text-purple-400 mb-2 flex items-center"><IconUsers className="w-5 h-5 mr-2" /> Deelnemers Beheer & Punten</h2>
+                  <p className="text-sm text-gray-400 mb-6">Voeg extra handmatige punten toe of verwijder brackets (bijv. bij dubbele inzendingen).</p>
                   <div className="space-y-3">
                     {allUsers.map(u => (
                       <div key={u.id} className="flex items-center justify-between bg-gray-900 p-3 rounded-lg border border-gray-800">
@@ -631,9 +664,14 @@ export default function App() {
                           <span className="font-bold text-gray-200">{u.name || 'Anonieme Speler'}</span>
                           <div className="text-xs text-gray-500">Automatische score: {calculatePoints(u) - (realResults.manualPoints?.[u.id] || 0)} ptn</div>
                         </div>
-                        <div className="flex items-center space-x-2">
-                          <span className="text-sm text-gray-400">Extra ptn:</span>
-                          <input type="number" value={realResults.manualPoints?.[u.id] || 0} onChange={(e) => { const val = parseInt(e.target.value) || 0; const newManualPoints = { ...realResults.manualPoints, [u.id]: val }; setRealResults(prev => ({ ...prev, manualPoints: newManualPoints })); }} className="w-20 bg-gray-800 border border-purple-800/50 rounded px-3 py-1 text-white font-bold text-center focus:border-purple-500 outline-none" />
+                        <div className="flex items-center space-x-4">
+                          <div className="flex items-center space-x-2">
+                            <span className="text-sm text-gray-400">Extra ptn:</span>
+                            <input type="number" value={realResults.manualPoints?.[u.id] || 0} onChange={(e) => { const val = parseInt(e.target.value) || 0; const newManualPoints = { ...realResults.manualPoints, [u.id]: val }; setRealResults(prev => ({ ...prev, manualPoints: newManualPoints })); }} className="w-16 bg-gray-800 border border-purple-800/50 rounded px-2 py-1 text-white font-bold text-center focus:border-purple-500 outline-none" />
+                          </div>
+                          <button onClick={() => setBracketToDelete({id: u.id, name: u.name})} className="p-2 bg-red-900/30 text-red-400 hover:bg-red-600 hover:text-white rounded transition-colors" title="Verwijder Bracket">
+                            <IconTrash className="w-4 h-4" />
+                          </button>
                         </div>
                       </div>
                     ))}
