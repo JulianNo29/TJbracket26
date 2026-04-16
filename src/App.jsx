@@ -463,7 +463,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100 font-sans selection:bg-orange-500 selection:text-white relative">
       
-      {/* --- DELETE CONFIRMATION MODAL --- */}
+      {/* --- DELETE CONFIRMATION MODAL POP-UP --- */}
       {bracketToDelete && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
           <div className="bg-gray-900 border border-red-500 rounded-xl p-6 max-w-sm w-full shadow-2xl animate-fadeIn">
@@ -654,6 +654,7 @@ export default function App() {
                   <button onClick={toggleLock} className={`px-6 py-3 rounded-lg font-bold text-white shadow-lg transition-all ${appSettings.isLocked ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'}`}>{appSettings.isLocked ? 'Brackets Ontgrendelen' : 'Brackets Definitief Locken'}</button>
                 </div>
 
+                {/* --- HIER ZIT DE NIEUWE VERWIJDER-FUNCTIE --- */}
                 <div className="bg-purple-900/20 border border-purple-800 rounded-xl p-6">
                   <h2 className="text-xl font-bold text-purple-400 mb-2 flex items-center"><IconUsers className="w-5 h-5 mr-2" /> Deelnemers Beheer & Punten</h2>
                   <p className="text-sm text-gray-400 mb-6">Voeg extra handmatige punten toe of verwijder brackets (bijv. bij dubbele inzendingen).</p>
@@ -669,6 +670,7 @@ export default function App() {
                             <span className="text-sm text-gray-400">Extra ptn:</span>
                             <input type="number" value={realResults.manualPoints?.[u.id] || 0} onChange={(e) => { const val = parseInt(e.target.value) || 0; const newManualPoints = { ...realResults.manualPoints, [u.id]: val }; setRealResults(prev => ({ ...prev, manualPoints: newManualPoints })); }} className="w-16 bg-gray-800 border border-purple-800/50 rounded px-2 py-1 text-white font-bold text-center focus:border-purple-500 outline-none" />
                           </div>
+                          {/* VERWIJDER KNOP (PRULLENBAK) */}
                           <button onClick={() => setBracketToDelete({id: u.id, name: u.name})} className="p-2 bg-red-900/30 text-red-400 hover:bg-red-600 hover:text-white rounded transition-colors" title="Verwijder Bracket">
                             <IconTrash className="w-4 h-4" />
                           </button>
