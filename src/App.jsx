@@ -64,12 +64,17 @@ const initialBonus = {
   mostDoublesPlayer: '', mostDoublesAmount: ''
 };
 
+// Helper functie voor de datum
+const formatDate = (isoString) => {
+  if (!isoString) return 'Onbekend';
+  const d = new Date(isoString);
+  return d.toLocaleDateString('nl-NL', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+};
+
 export default function App() {
-  // Gebruiker & Auth state
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   
-  // Email/Wachtwoord Auth state
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
@@ -217,13 +222,15 @@ export default function App() {
   };
 
   const saveMyBracket = async (name, picks, bonus) => {
+    // Beveiliging: Stop de functie als de brackets op slot staan!
     if (!user || appSettings.isLocked) return;
+    
     try {
       await setDoc(doc(db, 'brackets', user.uid), {
         name: name || user.displayName || 'Anonieme Speler',
         picks: picks,
         bonus: bonus,
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString() // Dit is de Timestamp!
       });
     } catch (e) {
       console.error("Save error:", e);
@@ -455,7 +462,7 @@ export default function App() {
       <div className="space-y-8 animate-fadeIn">
         {isLockedUI && !isReadOnly && (
           <div className="bg-green-900/30 border border-green-500 text-green-300 p-4 rounded-lg flex flex-col mb-6 shadow-lg">
-            <div className="flex items-center font-bold mb-1"><IconLock className="w-5 h-5 mr-3" />Jouw bracket is succesvol ingediend!</div>
+            <div className="flex items-center font-bold mb-1"><IconLock className="w-5 h-5 mr-3" />Jouw bracket is succesvol opgeslagen!</div>
             <span className="text-xs text-green-400/80 ml-8">Je kunt nu zien hoe je presteert. Jouw foute keuzes lichten rood op, juiste keuzes groen.</span>
           </div>
         )}
@@ -602,6 +609,17 @@ export default function App() {
       <main className="max-w-6xl mx-auto px-4 py-8">
         {activeTab === 'bracket' && (
           <div className="pb-12">
+            
+            {/* DEADLINE BANNER */}
+            {appSettings.isLocked && (
+              <div className="mb-8 p-6 bg-red-900/20 border border-red-800 rounded-xl text-center animate-fadeIn shadow-lg">
+                  <h3 className="text-2xl font-black text-red-500 mb-2 flex justify-center items-center uppercase tracking-wide">
+                      <IconLock className="w-6 h-6 mr-2" /> Deadline Verstreken
+                  </h3>
+                  <p className="text-gray-300">De play-offs zijn begonnen! Jouw bracket is definitief vergrendeld en ingezonden.</p>
+              </div>
+            )}
+
             <div className="bg-gray-900 rounded-xl p-6 mb-8 border border-gray-800 shadow-xl flex flex-col sm:flex-row items-center justify-between">
               <div>
                 <h2 className="text-lg font-bold mb-1 flex items-center">
@@ -611,9 +629,10 @@ export default function App() {
                 <p className="text-sm text-gray-400 ml-11">Vul je naam in zodat je vrienden weten wie je bent.</p>
               </div>
               <div className="mt-4 sm:mt-0 w-full sm:w-auto">
-                <input type="text" value={userName} onChange={(e) => { setUserName(e.target.value); saveMyBracket(e.target.value, myPicks, myBonus); }} placeholder="Jouw Voornaam" className="w-full sm:w-64 bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-all outline-none" />
+                <input type="text" value={userName} disabled={appSettings.isLocked} onChange={(e) => { setUserName(e.target.value); saveMyBracket(e.target.value, myPicks, myBonus); }} placeholder="Jouw Voornaam" className="w-full sm:w-64 bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-all outline-none disabled:opacity-50" />
               </div>
             </div>
+            
             {renderBracketView(myPicks, myBonus, false)}
             
             {!appSettings.isLocked && (
@@ -657,7 +676,7 @@ export default function App() {
                 <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 shadow-xl flex flex-col sm:flex-row items-center justify-between">
                   <div>
                     <h2 className="text-2xl font-black text-white">Bracket van <span className="text-orange-500">{viewingUser.name || 'Anonieme Speler'}</span></h2>
-                    <p className="text-gray-400">Bekijk de voorspellingen en behaalde punten.</p>
+                    <p className="text-gray-400">Bekijk de voorspellingen en behaalde punten. <span className="text-orange-400 ml-2">(Laatst gewijzigd: {formatDate(viewingUser.updatedAt)})</span></p>
                   </div>
                   <div className="mt-4 sm:mt-0 text-right">
                     <div className="text-3xl font-black text-orange-500">{viewingUser.score} <span className="text-sm font-normal text-gray-500">ptn</span></div>
@@ -679,7 +698,9 @@ export default function App() {
                         <div className="w-8 font-black text-gray-500 text-lg">{index === 0 ? <span className="text-yellow-500">1</span> : index === 1 ? <span className="text-gray-400">2</span> : index === 2 ? <span className="text-amber-600">3</span> : index + 1}</div>
                         <div className="flex-1">
                           <div className="font-bold text-lg flex items-center">{u.name || 'Anonieme Speler'} {u.id === user.uid && <span className="ml-2 text-[10px] bg-orange-600 px-2 py-0.5 rounded-full text-white uppercase tracking-wider">Jij</span>}</div>
-                          <div className="text-xs text-gray-500">{Object.keys(u.picks || {}).length} picks ingevuld</div>
+                          <div className="text-xs text-gray-500 mt-1">
+                            {Object.keys(u.picks || {}).length} picks ingevuld <span className="mx-2">•</span> Laatst gewijzigd: {formatDate(u.updatedAt)}
+                          </div>
                         </div>
                         <div className="text-3xl font-black text-orange-500">{u.score} <span className="text-sm font-normal text-gray-500">ptn</span></div>
                         <button onClick={() => setViewingUser(u)} className="ml-4 p-2 bg-gray-800 hover:bg-gray-700 rounded-md text-gray-400 hover:text-white transition-colors" title="Bekijk Bracket">
@@ -765,7 +786,6 @@ export default function App() {
                   <button onClick={toggleLock} className={`px-6 py-3 rounded-lg font-bold text-white shadow-lg transition-all ${appSettings.isLocked ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'}`}>{appSettings.isLocked ? 'Brackets Ontgrendelen' : 'Brackets Definitief Locken'}</button>
                 </div>
 
-                {/* --- HIER ZIT DE NIEUWE VERWIJDER-FUNCTIE --- */}
                 <div className="bg-purple-900/20 border border-purple-800 rounded-xl p-6">
                   <h2 className="text-xl font-bold text-purple-400 mb-2 flex items-center"><IconUsers className="w-5 h-5 mr-2" /> Deelnemers Beheer & Punten</h2>
                   <p className="text-sm text-gray-400 mb-6">Voeg extra handmatige punten toe of verwijder brackets (bijv. bij dubbele inzendingen).</p>
@@ -781,7 +801,6 @@ export default function App() {
                             <span className="text-sm text-gray-400">Extra ptn:</span>
                             <input type="number" value={realResults.manualPoints?.[u.id] || 0} onChange={(e) => { const val = parseInt(e.target.value) || 0; const newManualPoints = { ...realResults.manualPoints, [u.id]: val }; setRealResults(prev => ({ ...prev, manualPoints: newManualPoints })); }} className="w-16 bg-gray-800 border border-purple-800/50 rounded px-2 py-1 text-white font-bold text-center focus:border-purple-500 outline-none" />
                           </div>
-                          {/* VERWIJDER KNOP (PRULLENBAK) */}
                           <button onClick={() => setBracketToDelete({id: u.id, name: u.name})} className="p-2 bg-red-900/30 text-red-400 hover:bg-red-600 hover:text-white rounded transition-colors" title="Verwijder Bracket">
                             <IconTrash className="w-4 h-4" />
                           </button>
